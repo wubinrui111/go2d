@@ -2,8 +2,8 @@
 package game
 
 import (
-	"github.com/yourusername/2d-game/internal/scenes"
-	"github.com/yourusername/2d-game/internal/managers"
+	"github.com/wubinrui111/2d-game/internal/scenes"
+	"github.com/wubinrui111/2d-game/internal/managers"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )

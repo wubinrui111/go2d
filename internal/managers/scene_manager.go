@@ -1,7 +1,7 @@
 package managers
 
 import (
-	"github.com/yourusername/2d-game/internal/scenes"
+	"github.com/wubinrui111/2d-game/internal/scenes"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )

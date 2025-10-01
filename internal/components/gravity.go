@@ -11,6 +11,6 @@ type Gravity struct {
 func NewGravity() *Gravity {
 	return &Gravity{
 		Enabled: true,
-		Force:   500.0, // Pixels per second squared
+		Force:   300.0, // Pixels per second squared
 	}
 }

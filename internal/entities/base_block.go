@@ -1,7 +1,7 @@
 package entities
 
 import (
-	"github.com/yourusername/2d-game/internal/components"
+	"github.com/wubinrui111/2d-game/internal/components"
 	"image/color"
 )
 

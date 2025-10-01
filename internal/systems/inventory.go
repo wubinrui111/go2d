@@ -7,7 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"github.com/yourusername/2d-game/internal/components"
+	"github.com/wubinrui111/2d-game/internal/components"
 )
 
 const (
@@ -39,6 +39,9 @@ type InventorySystem struct {
 	
 	// GameMode indicates the current game mode (0 = survival, 1 = creative)
 	GameMode int
+	
+	// BlockSprites stores references to block sprites for rendering
+	BlockSprites map[string]*ebiten.Image
 }
 
 // NewInventorySystem creates a new inventory system
@@ -48,7 +51,13 @@ func NewInventorySystem() *InventorySystem {
 		MouseAttachedSlot: -1, // -1 indicates no item is attached to mouse
 		MouseAttachedItem: nil,
 		GameMode:          0, // 0 = survival mode by default
+		BlockSprites:      nil, // Initially no sprites
 	}
+}
+
+// SetBlockSprites sets the block sprites for the inventory system
+func (is *InventorySystem) SetBlockSprites(sprites map[string]*ebiten.Image) {
+	is.BlockSprites = sprites
 }
 
 // Update handles input for the inventory system
@@ -117,8 +126,47 @@ func (is *InventorySystem) drawHotbar(screen *ebiten.Image, inventory *component
 
 		// Draw item if present
 		if slot.Item != nil && slot.Count > 0 {
-			// Draw item color (as a placeholder for actual sprite)
-			ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+			// Draw item with sprite if available, otherwise use color
+			if is.BlockSprites != nil {
+				// Try to get sprite for this item
+				var itemSprite *ebiten.Image
+				
+				// Map item ID to sprite
+				switch slot.Item.ID {
+				case "stone":
+					itemSprite = is.BlockSprites["stone"]
+				case "dirt":
+					itemSprite = is.BlockSprites["dirt"]
+				case "wood":
+					itemSprite = is.BlockSprites["wood"]
+				case "small_block":
+					itemSprite = is.BlockSprites["small_block"]
+				case "red_block":
+					itemSprite = is.BlockSprites["RedBlock"]
+				case "blue_block":
+					itemSprite = is.BlockSprites["BlueBlock"]
+				case "green_block":
+					itemSprite = is.BlockSprites["GreenBlock"]
+				default:
+					// Try to find sprite by item ID directly
+					if sprite, exists := is.BlockSprites[slot.Item.ID]; exists {
+						itemSprite = sprite
+					}
+				}
+				
+				if itemSprite != nil {
+					// Draw sprite
+					opts := &ebiten.DrawImageOptions{}
+					opts.GeoM.Translate(x+2, y+2)
+					screen.DrawImage(itemSprite, opts)
+				} else {
+					// Fallback to color
+					ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+				}
+			} else {
+				// Draw item color (as a placeholder for actual sprite)
+				ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+			}
 
 			// Draw item count
 			countText := fmt.Sprintf("%d", slot.Count)
@@ -142,8 +190,47 @@ func (is *InventorySystem) drawHotbar(screen *ebiten.Image, inventory *component
 		// Draw semi-transparent background
 		ebitenutil.DrawRect(screen, x, y, SlotSize, SlotSize, color.RGBA{100, 100, 100, 150})
 		
-		// Draw item color
-		ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+		// Draw item with sprite if available, otherwise use color
+		if is.BlockSprites != nil && is.MouseAttachedItem.Item != nil {
+			// Try to get sprite for this item
+			var itemSprite *ebiten.Image
+			
+			// Map item ID to sprite
+			switch is.MouseAttachedItem.Item.ID {
+			case "stone":
+				itemSprite = is.BlockSprites["stone"]
+			case "dirt":
+				itemSprite = is.BlockSprites["dirt"]
+			case "wood":
+				itemSprite = is.BlockSprites["wood"]
+			case "small_block":
+				itemSprite = is.BlockSprites["small_block"]
+			case "red_block":
+				itemSprite = is.BlockSprites["RedBlock"]
+			case "blue_block":
+				itemSprite = is.BlockSprites["BlueBlock"]
+			case "green_block":
+				itemSprite = is.BlockSprites["GreenBlock"]
+			default:
+				// Try to find sprite by item ID directly
+				if sprite, exists := is.BlockSprites[is.MouseAttachedItem.Item.ID]; exists {
+					itemSprite = sprite
+				}
+			}
+			
+			if itemSprite != nil {
+				// Draw sprite
+				opts := &ebiten.DrawImageOptions{}
+				opts.GeoM.Translate(x+2, y+2)
+				screen.DrawImage(itemSprite, opts)
+			} else {
+				// Fallback to color
+				ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+			}
+		} else if is.MouseAttachedItem.Item != nil {
+			// Draw item color
+			ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+		}
 		
 		// Draw item count
 		countText := fmt.Sprintf("%d", is.MouseAttachedItem.Count)
@@ -268,8 +355,47 @@ func (is *InventorySystem) drawFullInventory(screen *ebiten.Image, inventory *co
 
 		// Draw item if present
 		if slot.Item != nil && slot.Count > 0 {
-			// Draw item color (as a placeholder for actual sprite)
-			ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+			// Draw item with sprite if available, otherwise use color
+			if is.BlockSprites != nil {
+				// Try to get sprite for this item
+				var itemSprite *ebiten.Image
+				
+				// Map item ID to sprite
+				switch slot.Item.ID {
+				case "stone":
+					itemSprite = is.BlockSprites["stone"]
+				case "dirt":
+					itemSprite = is.BlockSprites["dirt"]
+				case "wood":
+					itemSprite = is.BlockSprites["wood"]
+				case "small_block":
+					itemSprite = is.BlockSprites["small_block"]
+				case "red_block":
+					itemSprite = is.BlockSprites["RedBlock"]
+				case "blue_block":
+					itemSprite = is.BlockSprites["BlueBlock"]
+				case "green_block":
+					itemSprite = is.BlockSprites["GreenBlock"]
+				default:
+					// Try to find sprite by item ID directly
+					if sprite, exists := is.BlockSprites[slot.Item.ID]; exists {
+						itemSprite = sprite
+					}
+				}
+				
+				if itemSprite != nil {
+					// Draw sprite
+					opts := &ebiten.DrawImageOptions{}
+					opts.GeoM.Translate(x+2, y+2)
+					screen.DrawImage(itemSprite, opts)
+				} else {
+					// Fallback to color
+					ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+				}
+			} else {
+				// Draw item color (as a placeholder for actual sprite)
+				ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+			}
 
 			// Draw item count
 			countText := fmt.Sprintf("%d", slot.Count)
@@ -307,8 +433,47 @@ func (is *InventorySystem) drawFullInventory(screen *ebiten.Image, inventory *co
 		// Draw semi-transparent background
 		ebitenutil.DrawRect(screen, x, y, SlotSize, SlotSize, color.RGBA{100, 100, 100, 150})
 		
-		// Draw item color
-		ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+		// Draw item with sprite if available, otherwise use color
+		if is.BlockSprites != nil && is.MouseAttachedItem.Item != nil {
+			// Try to get sprite for this item
+			var itemSprite *ebiten.Image
+			
+			// Map item ID to sprite
+			switch is.MouseAttachedItem.Item.ID {
+			case "stone":
+				itemSprite = is.BlockSprites["stone"]
+			case "dirt":
+				itemSprite = is.BlockSprites["dirt"]
+			case "wood":
+				itemSprite = is.BlockSprites["wood"]
+			case "small_block":
+				itemSprite = is.BlockSprites["small_block"]
+			case "red_block":
+				itemSprite = is.BlockSprites["RedBlock"]
+			case "blue_block":
+				itemSprite = is.BlockSprites["BlueBlock"]
+			case "green_block":
+				itemSprite = is.BlockSprites["GreenBlock"]
+			default:
+				// Try to find sprite by item ID directly
+				if sprite, exists := is.BlockSprites[is.MouseAttachedItem.Item.ID]; exists {
+					itemSprite = sprite
+				}
+			}
+			
+			if itemSprite != nil {
+				// Draw sprite
+				opts := &ebiten.DrawImageOptions{}
+				opts.GeoM.Translate(x+2, y+2)
+				screen.DrawImage(itemSprite, opts)
+			} else {
+				// Fallback to color
+				ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+			}
+		} else if is.MouseAttachedItem.Item != nil {
+			// Draw item color
+			ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+		}
 		
 		// Draw item count
 		countText := fmt.Sprintf("%d", is.MouseAttachedItem.Count)
@@ -698,7 +863,10 @@ func (is *InventorySystem) handleFullInventoryPlacement(inventory *components.In
 							inventory.Slots[i] = components.ItemStack{}
 							targetSlot = &inventory.Slots[i]
 						}
-						targetSlot.Item = is.MouseAttachedItem.Item
+						
+						// Create a copy of the item to place in the slot
+						itemCopy := *is.MouseAttachedItem.Item
+						targetSlot.Item = &itemCopy
 						targetSlot.Count = is.MouseAttachedItem.Count
 						
 						// Keep the item attached to mouse for multiple placements
@@ -784,9 +952,12 @@ func (is *InventorySystem) handleCreativeItemClick(mouseX, mouseY float64, creat
 		
 		// Check if mouse is within item bounds
 		if mouseX >= x && mouseX <= x+SlotSize && mouseY >= y && mouseY <= y+SlotSize {
+			// Create a copy of the item
+			itemCopy := item
+			
 			// Attach a copy of this item to the mouse with max stack count
 			is.MouseAttachedItem = &components.ItemStack{
-				Item:  &item,
+				Item:  &itemCopy,
 				Count: item.MaxStack,
 			}
 			// Use special slot value to indicate this is a creative item

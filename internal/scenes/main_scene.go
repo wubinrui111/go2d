@@ -539,16 +539,17 @@ func (ms *MainScene) placeBlockAt(x, y float64) {
 	case "green_block":
 		newBlock = entities.NewGreenBlock(gridX, gridY)
 	case "stone":
-		newBlock = entities.NewSmallBlock(gridX, gridY)
-		newBlock.SetColor(color.RGBA{128, 128, 128, 255})
+		newBlock = entities.NewSmallBlockWithColor(gridX, gridY, color.RGBA{128, 128, 128, 255})
+		newBlock.SetName("stone")
 	case "dirt":
-		newBlock = entities.NewSmallBlock(gridX, gridY)
-		newBlock.SetColor(color.RGBA{100, 50, 0, 255})
+		newBlock = entities.NewSmallBlockWithColor(gridX, gridY, color.RGBA{100, 50, 0, 255})
+		newBlock.SetName("dirt")
 	case "wood":
-		newBlock = entities.NewSmallBlock(gridX, gridY)
-		newBlock.SetColor(color.RGBA{100, 70, 30, 255})
+		newBlock = entities.NewSmallBlockWithColor(gridX, gridY, color.RGBA{100, 70, 30, 255})
+		newBlock.SetName("wood")
 	default: // "small_block" 或其他情况
 		newBlock = entities.NewSmallBlock(gridX, gridY)
+		newBlock.SetName("small_block")
 	}
 	
 	// 减少物品数量（创造模式下不减少物品数量）
@@ -689,17 +690,19 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 			// 根据方块类型选择对应的精灵
 			switch ms.draggedBlockType {
 			case "red_block":
-				blockSprite = ms.blockSprites["RedBlock"]
+				blockSprite = ms.blockSprites["red_block"]
 			case "blue_block":
-				blockSprite = ms.blockSprites["BlueBlock"]
+				blockSprite = ms.blockSprites["blue_block"]
 			case "green_block":
-				blockSprite = ms.blockSprites["GreenBlock"]
+				blockSprite = ms.blockSprites["green_block"]
 			case "dirt":
 				blockSprite = ms.blockSprites["dirt"]
 			case "wood":
 				blockSprite = ms.blockSprites["wood"]
+			case "stone":
+				blockSprite = ms.blockSprites["stone"]
 			default:
-				blockSprite = ms.blockSprites["SmallBlock"]
+				blockSprite = ms.blockSprites["small_block"]
 			}
 			
 			if blockSprite != nil {

@@ -49,6 +49,11 @@ func (bb *BaseBlock) IsMouseOver(mouseX, mouseY float64) bool {
 		bb.Box.Y <= mouseY && mouseY <= bb.Box.Y+bb.Box.Height
 }
 
+// SetName sets the name of the block
+func (bb *BaseBlock) SetName(name string) {
+	bb.Name = name
+}
+
 // GetBox implements the BoxHolder interface
 func (bb *BaseBlock) GetBox() *components.Box {
 	return &bb.Box
@@ -67,9 +72,4 @@ func (bb *BaseBlock) SetColor(c color.RGBA) {
 // GetName returns the name of the block type
 func (bb *BaseBlock) GetName() string {
 	return bb.Name
-}
-
-// SetName sets the name of the block type
-func (bb *BaseBlock) SetName(name string) {
-	bb.Name = name
 }

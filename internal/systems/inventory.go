@@ -3,6 +3,7 @@ package graphics
 import (
 	"fmt"
 	"image/color"
+	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -130,8 +131,29 @@ func (is *InventorySystem) drawHotbar(screen *ebiten.Image, inventory *component
 
 		// Draw item if present
 		if slot.Item != nil && slot.Count > 0 {
-			// Draw item color (as a placeholder for actual sprite)
-			ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+			// Use sprite if available, otherwise fallback to colored rectangle
+			if is.BlockSprites != nil {
+				// Try to find a matching sprite for this item
+				var sprite *ebiten.Image
+				if s, exists := is.BlockSprites[slot.Item.ID]; exists {
+					sprite = s
+				} else if s, exists := is.BlockSprites[slot.Item.Name]; exists {
+					sprite = s
+				}
+				
+				if sprite != nil {
+					// Draw the sprite
+					opts := &ebiten.DrawImageOptions{}
+					opts.GeoM.Translate(x+2, y+2)
+					screen.DrawImage(sprite, opts)
+				} else {
+					// Fallback to colored rectangle
+					ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+				}
+			} else {
+				// Fallback to colored rectangle
+				ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+			}
 
 			// Draw item count
 			countText := fmt.Sprintf("%d", slot.Count)
@@ -177,58 +199,8 @@ func (is *InventorySystem) drawFullInventory(screen *ebiten.Image, inventory *co
 		ebitenutil.DebugPrintAt(screen, "Inventory (Creative Mode)", 300, 20)
 	}
 
-	// Define creative items
-	creativeItems := []components.Item{
-		{
-			ID:       "stone",
-			Name:     "Stone",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{128, 128, 128, 255},
-		},
-		{
-			ID:       "dirt",
-			Name:     "Dirt",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{100, 50, 0, 255},
-		},
-		{
-			ID:       "wood",
-			Name:     "Wood",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{100, 70, 30, 255},
-		},
-		{
-			ID:       "small_block",
-			Name:     "Small Block",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{200, 200, 50, 255},
-		},
-		{
-			ID:       "red_block",
-			Name:     "Red Block",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{200, 50, 50, 255},
-		},
-		{
-			ID:       "blue_block",
-			Name:     "Blue Block",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{50, 50, 200, 255},
-		},
-		{
-			ID:       "green_block",
-			Name:     "Green Block",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{50, 200, 50, 255},
-		},
-	}
+	// Define creative items from block sprites
+	creativeItems := is.generateCreativeItemsFromSprites()
 
 	// Calculate total slots needed (player slots + creative items in creative mode)
 	totalSlots := len(inventory.Slots)
@@ -281,8 +253,29 @@ func (is *InventorySystem) drawFullInventory(screen *ebiten.Image, inventory *co
 
 		// Draw item if present
 		if slot.Item != nil && slot.Count > 0 {
-			// Draw item color (as a placeholder for actual sprite)
-			ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+			// Use sprite if available, otherwise fallback to colored rectangle
+			if is.BlockSprites != nil {
+				// Try to find a matching sprite for this item
+				var sprite *ebiten.Image
+				if s, exists := is.BlockSprites[slot.Item.ID]; exists {
+					sprite = s
+				} else if s, exists := is.BlockSprites[slot.Item.Name]; exists {
+					sprite = s
+				}
+				
+				if sprite != nil {
+					// Draw the sprite
+					opts := &ebiten.DrawImageOptions{}
+					opts.GeoM.Translate(x+2, y+2)
+					screen.DrawImage(sprite, opts)
+				} else {
+					// Fallback to colored rectangle
+					ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+				}
+			} else {
+				// Fallback to colored rectangle
+				ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, slot.Item.Color)
+			}
 
 			// Draw item count
 			countText := fmt.Sprintf("%d", slot.Count)
@@ -320,8 +313,29 @@ func (is *InventorySystem) drawFullInventory(screen *ebiten.Image, inventory *co
 		// Draw semi-transparent background
 		ebitenutil.DrawRect(screen, x, y, SlotSize, SlotSize, color.RGBA{100, 100, 100, 150})
 		
-		// Draw item color
-		ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+		// Use sprite if available, otherwise fallback to colored rectangle
+		if is.BlockSprites != nil && is.MouseAttachedItem.Item != nil {
+			// Try to find a matching sprite for this item
+			var sprite *ebiten.Image
+			if s, exists := is.BlockSprites[is.MouseAttachedItem.Item.ID]; exists {
+				sprite = s
+			} else if s, exists := is.BlockSprites[is.MouseAttachedItem.Item.Name]; exists {
+				sprite = s
+			}
+			
+			if sprite != nil {
+				// Draw the sprite
+				opts := &ebiten.DrawImageOptions{}
+				opts.GeoM.Translate(x+2, y+2)
+				screen.DrawImage(sprite, opts)
+			} else {
+				// Fallback to colored rectangle
+				ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+			}
+		} else if is.MouseAttachedItem.Item != nil {
+			// Fallback to colored rectangle
+			ebitenutil.DrawRect(screen, x+2, y+2, SlotSize-4, SlotSize-4, is.MouseAttachedItem.Item.Color)
+		}
 		
 		// Draw item count
 		countText := fmt.Sprintf("%d", is.MouseAttachedItem.Count)
@@ -339,58 +353,8 @@ func (is *InventorySystem) handleMouseAttachment(inventory *components.Inventory
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		if is.MouseAttachedSlot == -1 { // Only attach if nothing is already attached
 			if is.Visible {
-				// Define creative items
-				creativeItems := []components.Item{
-					{
-						ID:       "stone",
-						Name:     "Stone",
-						Count:    1,
-						MaxStack: 64,
-						Color:    color.RGBA{128, 128, 128, 255},
-					},
-					{
-						ID:       "dirt",
-						Name:     "Dirt",
-						Count:    1,
-						MaxStack: 64,
-						Color:    color.RGBA{100, 50, 0, 255},
-					},
-					{
-						ID:       "wood",
-						Name:     "Wood",
-						Count:    1,
-						MaxStack: 64,
-						Color:    color.RGBA{100, 70, 30, 255},
-					},
-					{
-						ID:       "small_block",
-						Name:     "Small Block",
-						Count:    1,
-						MaxStack: 64,
-						Color:    color.RGBA{200, 200, 50, 255},
-					},
-					{
-						ID:       "red_block",
-						Name:     "Red Block",
-						Count:    1,
-						MaxStack: 64,
-						Color:    color.RGBA{200, 50, 50, 255},
-					},
-					{
-						ID:       "blue_block",
-						Name:     "Blue Block",
-						Count:    1,
-						MaxStack: 64,
-						Color:    color.RGBA{50, 50, 200, 255},
-					},
-					{
-						ID:       "green_block",
-						Name:     "Green Block",
-						Count:    1,
-						MaxStack: 64,
-						Color:    color.RGBA{50, 200, 50, 255},
-					},
-				}
+				// Define creative items from block sprites
+				creativeItems := is.generateCreativeItemsFromSprites()
 				
 				// Calculate total slots (only include creative items in creative mode)
 				totalSlots := len(inventory.Slots)
@@ -610,58 +574,8 @@ func (is *InventorySystem) handleHotbarPlacement(inventory *components.Inventory
 
 // handleFullInventoryPlacement handles placing an attached item in the full inventory
 func (is *InventorySystem) handleFullInventoryPlacement(inventory *components.Inventory, mouseX, mouseY float64) {
-	// Define creative items
-	creativeItems := []components.Item{
-		{
-			ID:       "stone",
-			Name:     "Stone",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{128, 128, 128, 255},
-		},
-		{
-			ID:       "dirt",
-			Name:     "Dirt",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{100, 50, 0, 255},
-		},
-		{
-			ID:       "wood",
-			Name:     "Wood",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{100, 70, 30, 255},
-		},
-		{
-			ID:       "small_block",
-			Name:     "Small Block",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{200, 200, 50, 255},
-		},
-		{
-			ID:       "red_block",
-			Name:     "Red Block",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{200, 50, 50, 255},
-		},
-		{
-			ID:       "blue_block",
-			Name:     "Blue Block",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{50, 50, 200, 255},
-		},
-		{
-			ID:       "green_block",
-			Name:     "Green Block",
-			Count:    1,
-			MaxStack: 64,
-			Color:    color.RGBA{50, 200, 50, 255},
-		},
-	}
+	// Define creative items from block sprites
+	creativeItems := is.generateCreativeItemsFromSprites()
 	
 	// Calculate total slots (only include creative items in creative mode)
 	totalSlots := len(inventory.Slots)
@@ -807,4 +721,82 @@ func (is *InventorySystem) handleCreativeItemClick(mouseX, mouseY float64, creat
 			return
 		}
 	}
+}
+
+// generateCreativeItemsFromSprites generates creative items from available block sprites
+func (is *InventorySystem) generateCreativeItemsFromSprites() []components.Item {
+	// Return cached items if available and not dirty
+	if !is.cacheDirty && is.creativeItemsCache != nil {
+		return is.creativeItemsCache
+	}
+	
+	// If no block sprites are available, return empty list
+	if is.BlockSprites == nil {
+		return []components.Item{}
+	}
+	
+	// Create a map to avoid duplicates
+	itemsMap := make(map[string]components.Item)
+	
+	// Create items from block sprites
+	for name, sprite := range is.BlockSprites {
+		// Skip player sprite
+		if name == "Player" {
+			continue
+		}
+		
+		// Create item
+		item := components.Item{
+			ID:       name,
+			Name:     formatItemName(name),
+			Count:    1,
+			MaxStack: 64,
+			Color:    getColorFromSprite(sprite),
+		}
+		
+		// Use ID as key to avoid duplicates
+		itemsMap[item.ID] = item
+	}
+	
+	// Convert map to slice
+	items := make([]components.Item, 0, len(itemsMap))
+	for _, item := range itemsMap {
+		items = append(items, item)
+	}
+	
+	// Sort items by ID to ensure consistent order
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID < items[j].ID
+	})
+	
+	// Cache the items
+	is.creativeItemsCache = items
+	is.cacheDirty = false
+	
+	return items
+}
+
+// formatItemName formats an item name from its ID
+func formatItemName(id string) string {
+	// Simple formatting - replace underscores with spaces and capitalize first letter
+	name := ""
+	for i, r := range id {
+		if i == 0 {
+			// Capitalize first letter
+			if r >= 'a' && r <= 'z' {
+				r = r - 'a' + 'A'
+			}
+		} else if r == '_' {
+			r = ' '
+		}
+		name += string(r)
+	}
+	return name
+}
+
+// getColorFromSprite extracts a representative color from a sprite
+func getColorFromSprite(sprite *ebiten.Image) color.RGBA {
+	// For now, return a default color
+	// In a more advanced implementation, we could sample the sprite to get an average color
+	return color.RGBA{128, 128, 128, 255}
 }

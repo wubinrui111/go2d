@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"math/rand"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -13,8 +14,8 @@ import (
 	"github.com/wubinrui111/2d-game/internal/entities"
 	"github.com/wubinrui111/2d-game/internal/input"
 	"github.com/wubinrui111/2d-game/internal/components"
-	sprite "github.com/wubinrui111/2d-game/internal/graphics" // 将graphics包重命名为sprite以避免冲突
-	graphics "github.com/wubinrui111/2d-game/internal/systems"
+	"github.com/wubinrui111/2d-game/internal/graphics"
+	graphicsSystem "github.com/wubinrui111/2d-game/internal/systems"
 )
 
 const (
@@ -30,40 +31,34 @@ type MainScene struct {
 	itemDrops []*entities.ItemDrop // 掉落物列表
 	cameraX   float64  // 添加摄像机X坐标
 	cameraY   float64  // 添加摄像机Y坐标
-	
-	// 添加选中方块相关字段
-	selectedBlock *entities.SmallBlock
-	leftClickProcessed bool
-	rightClickProcessed bool
-	
-	// 添加网格显示相关字段
-	showGrid bool // 是否显示坐标系网格
-	
-	// 添加F3按键状态跟踪
-	f3Pressed bool
-	
+	selectedBlock *entities.SmallBlock // 添加选中的方块
+	// 添加鼠标点击状态跟踪，避免重复处理同一点击
+	leftClickProcessed   bool
+	rightClickProcessed  bool
+	// 添加网格显示控制字段
+	showGrid  bool
 	// 添加帧率计算相关字段
-	fps float64
+	fps       float64
 	frameCount int
 	lastFpsUpdate time.Time
-	
+	// 添加F3按键状态跟踪
+	f3Pressed bool
 	// 添加物品系统相关字段
 	itemTypes []string     // 可用物品类型列表
 	currentItemIndex int   // 当前选中的物品索引
 	
 	// 添加物品栏系统相关字段
 	inventory       *components.Inventory
-	inventorySystem *graphics.InventorySystem
+	inventorySystem *graphicsSystem.InventorySystem
 	
 	// 添加鼠标跟随方块相关字段
 	draggedBlockType string // 被拖拽的方块类型
 	draggedBlockColor color.RGBA // 被拖拽方块的颜色
 	showDraggedBlock bool   // 是否显示被拖拽的方块
 	
-	// 添加精灵表相关字段
-	spriteSheet *sprite.SpriteSheet     // 精灵表
-	playerSprite *ebiten.Image          // 玩家精灵
-	blockSprites map[string]*ebiten.Image // 不同类型方块的精灵映射
+	// 添加精灵相关字段
+	playerSprite *ebiten.Image
+	blockSprites map[string]*ebiten.Image
 }
 
 // NewMainScene creates a new main scene
@@ -109,7 +104,7 @@ func NewMainScene() *MainScene {
 		itemTypes: []string{"SmallBlock", "RedBlock", "BlueBlock", "GreenBlock"},
 		currentItemIndex: 0,
 		inventory:       components.NewInventory(27, 9),
-		inventorySystem: graphics.NewInventorySystem(),
+		inventorySystem: graphicsSystem.NewInventorySystem(),
 		draggedBlockType: "",
 		draggedBlockColor: color.RGBA{0, 0, 0, 0},
 		showDraggedBlock: false,
@@ -121,9 +116,8 @@ func NewMainScene() *MainScene {
 	scene.cameraY = scene.player.Position.Y - 300  // 300是屏幕高度的一半
 	
 	// 尝试加载精灵表
-	spriteSheet, err := sprite.NewSpriteSheet("./image/test.png", 32, 32)
+	spriteSheet, err := graphics.NewSpriteSheet("./image/test.png", 32, 32)
 	if err == nil {
-		scene.spriteSheet = spriteSheet
 		// 获取精灵映射
 		spriteMap := spriteSheet.GetSpriteMap()
 		
@@ -133,7 +127,7 @@ func NewMainScene() *MainScene {
 		}
 		
 		// 为不同类型方块建立精灵映射
-		for blockType, index := range sprite.BlockSpriteMapping {
+		for blockType, index := range graphics.BlockSpriteMapping {
 			if blockSprite, exists := spriteMap[index]; exists {
 				// 为玩家和方块分别处理
 				if blockType == "Player" {
@@ -149,10 +143,12 @@ func NewMainScene() *MainScene {
 	} else {
 		// 如果加载失败，打印错误信息但继续运行（使用默认颜色渲染）
 		fmt.Printf("Failed to load sprite sheet: %v\n", err)
-		scene.spriteSheet = nil
 		scene.playerSprite = nil
 		scene.blockSprites = nil
 	}
+	
+	// 添加一些初始物品到物品栏
+	scene.initializeInventory()
 	
 	return scene
 }
@@ -268,8 +264,21 @@ func (ms *MainScene) Update() error {
 	for i := len(ms.itemDrops) - 1; i >= 0; i-- {
 		itemDrop := ms.itemDrops[i]
 		
-		// Update item drop behavior
-		itemDrop.Update(ms.player.Position)
+		// Convert blocks to BoxHolder interface
+		boxHolders := make([]components.BoxHolder, len(ms.blocks))
+		for j, block := range ms.blocks {
+			boxHolders[j] = block
+		}
+		
+		// Update item drop behavior with block collision
+		itemDrop.Update(ms.player.Position, 1.0/60.0, boxHolders)
+		
+		// Check if item should disappear (lifetime exceeded)
+		if itemDrop.ShouldDisappear() {
+			// Remove item drop from scene
+			ms.itemDrops = append(ms.itemDrops[:i], ms.itemDrops[i+1:]...)
+			continue
+		}
 		
 		// Check if item should be picked up
 		if itemDrop.ShouldPickup(ms.player.Position) {
@@ -532,18 +541,14 @@ func (ms *MainScene) placeBlockAt(x, y float64) {
 	case "stone":
 		newBlock = entities.NewSmallBlock(gridX, gridY)
 		newBlock.SetColor(color.RGBA{128, 128, 128, 255})
-		newBlock.Name = "stone"
 	case "dirt":
 		newBlock = entities.NewSmallBlock(gridX, gridY)
 		newBlock.SetColor(color.RGBA{100, 50, 0, 255})
-		newBlock.Name = "dirt"
 	case "wood":
 		newBlock = entities.NewSmallBlock(gridX, gridY)
 		newBlock.SetColor(color.RGBA{100, 70, 30, 255})
-		newBlock.Name = "wood"
 	default: // "small_block" 或其他情况
 		newBlock = entities.NewSmallBlock(gridX, gridY)
-		newBlock.Name = selectedItem.Item.ID
 	}
 	
 	// 减少物品数量（创造模式下不减少物品数量）
@@ -598,20 +603,16 @@ func (ms *MainScene) resolveCollisions() {
 	}
 }
 
-// Draw draws the scene to the screen
+// Draw renders the scene
 func (ms *MainScene) Draw(screen *ebiten.Image) {
-	// 获取鼠标位置（用于UI元素定位）
+	// 获取鼠标位置并应用摄像机偏移
 	mouseX, mouseY := ebiten.CursorPosition()
-	mouseXFloat := float64(mouseX)
-	mouseYFloat := float64(mouseY)
+	mouseXFloat := float64(mouseX) + ms.cameraX
+	mouseYFloat := float64(mouseY) + ms.cameraY
 	
-	// 计算鼠标在世界坐标系中的位置
-	worldMouseX := mouseXFloat + ms.cameraX
-	worldMouseY := mouseYFloat + ms.cameraY
-	
-	// 计算鼠标所在的网格位置（用于放置方块时的对齐）
-	mouseGridX := math.Floor(worldMouseX/GridSize) * GridSize
-	mouseGridY := math.Floor(worldMouseY/GridSize) * GridSize
+	// 计算鼠标所在的网格位置
+	mouseGridX := math.Floor(mouseXFloat/GridSize) * GridSize
+	mouseGridY := math.Floor(mouseYFloat/GridSize) * GridSize
 	
 	// 绘制背景
 	ebitenutil.DrawRect(screen, 0, 0, 800, 600, color.RGBA{135, 206, 235, 255}) // Sky blue background
@@ -621,8 +622,7 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 		ms.drawCoordinateSystem(screen)
 	}
 	
-	// Draw the player with border
-	playerColor := ms.player.GetColor()
+	// Draw the player
 	if ms.playerSprite != nil {
 		// 使用精灵渲染玩家
 		opts := &ebiten.DrawImageOptions{}
@@ -630,10 +630,11 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 		screen.DrawImage(ms.playerSprite, opts)
 	} else {
 		// 回退到纯色矩形渲染
+		playerColor := ms.player.GetColor()
 		ms.drawBoxWithBorder(screen, ms.player.Position.X, ms.player.Position.Y, ms.player.Box.Width, ms.player.Box.Height, playerColor, color.RGBA{0, 0, 0, 255})
 	}
 
-	// Draw blocks with border
+	// Draw blocks
 	for _, block := range ms.blocks {
 		if ms.blockSprites != nil {
 			// 使用精灵渲染方块
@@ -643,17 +644,8 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 			if sprite, exists := ms.blockSprites[block.Name]; exists {
 				blockSprite = sprite
 			} else {
-				// 如果找不到对应名称的精灵，尝试使用默认映射
-				switch block.Name {
-				case "RedBlock":
-					blockSprite = ms.blockSprites["RedBlock"]
-				case "BlueBlock":
-					blockSprite = ms.blockSprites["BlueBlock"]
-				case "GreenBlock":
-					blockSprite = ms.blockSprites["GreenBlock"]
-				default:
-					blockSprite = ms.blockSprites["SmallBlock"]
-				}
+				// 如果找不到对应名称的精灵，使用默认精灵
+				blockSprite = ms.blockSprites["SmallBlock"]
 			}
 			
 			if blockSprite != nil {
@@ -661,16 +653,24 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 				opts.GeoM.Translate(block.Position.X-ms.cameraX, block.Position.Y-ms.cameraY)
 				screen.DrawImage(blockSprite, opts)
 			} else {
-				// 如果找不到对应精灵，回退到纯色渲染
+				// 回退到纯色渲染
 				blockColor := block.GetColor()
-				ms.drawBoxWithBorder(screen, block.Position.X, block.Position.Y, block.Box.Width, block.Box.Height, blockColor, color.RGBA{0, 0, 0, 255})
+				
+				// 检查鼠标是否悬停在方块上
+				if block.IsMouseOver(mouseXFloat, mouseYFloat) {
+					// 如果鼠标悬停，绘制高亮边框
+					ms.drawBoxWithHighlight(screen, block.Position.X, block.Position.Y, block.Box.Width, block.Box.Height, blockColor)
+				} else {
+					// 否则绘制普通边框
+					ms.drawBoxWithBorder(screen, block.Position.X, block.Position.Y, block.Box.Width, block.Box.Height, blockColor, color.RGBA{0, 0, 0, 255})
+				}
 			}
 		} else {
 			// 回退到纯色矩形渲染
 			blockColor := block.GetColor()
 			
 			// 检查鼠标是否悬停在方块上
-			if block.IsMouseOver(worldMouseX, worldMouseY) {
+			if block.IsMouseOver(mouseXFloat, mouseYFloat) {
 				// 如果鼠标悬停，绘制高亮边框
 				ms.drawBoxWithHighlight(screen, block.Position.X, block.Position.Y, block.Box.Width, block.Box.Height, blockColor)
 			} else {
@@ -687,26 +687,19 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 			var blockSprite *ebiten.Image
 			
 			// 根据方块类型选择对应的精灵
-			if sprite, exists := ms.blockSprites[ms.draggedBlockType]; exists {
-				blockSprite = sprite
-			} else {
-				// 如果找不到对应类型的精灵，尝试使用默认映射
-				switch ms.draggedBlockType {
-				case "red_block":
-					blockSprite = ms.blockSprites["RedBlock"]
-				case "blue_block":
-					blockSprite = ms.blockSprites["BlueBlock"]
-				case "green_block":
-					blockSprite = ms.blockSprites["GreenBlock"]
-				case "dirt":
-					blockSprite = ms.blockSprites["dirt"]
-				case "wood":
-					blockSprite = ms.blockSprites["wood"]
-				case "stone":
-					blockSprite = ms.blockSprites["stone"]
-				default:
-					blockSprite = ms.blockSprites["SmallBlock"]
-				}
+			switch ms.draggedBlockType {
+			case "red_block":
+				blockSprite = ms.blockSprites["RedBlock"]
+			case "blue_block":
+				blockSprite = ms.blockSprites["BlueBlock"]
+			case "green_block":
+				blockSprite = ms.blockSprites["GreenBlock"]
+			case "dirt":
+				blockSprite = ms.blockSprites["dirt"]
+			case "wood":
+				blockSprite = ms.blockSprites["wood"]
+			default:
+				blockSprite = ms.blockSprites["SmallBlock"]
 			}
 			
 			if blockSprite != nil {
@@ -727,7 +720,7 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 	ms.drawBoxWithBorder(screen, mouseGridX, mouseGridY, GridSize, GridSize, color.RGBA{0, 0, 0, 0}, color.RGBA{255, 0, 0, 100})
 	
 	// 绘制帧率和坐标信息
-	ms.drawDebugInfo(screen, worldMouseX, worldMouseY)
+	ms.drawDebugInfo(screen, mouseXFloat, mouseYFloat)
 	
 	// Draw item drops
 	for _, itemDrop := range ms.itemDrops {
@@ -735,8 +728,15 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 		x := itemDrop.Position.X - ms.cameraX
 		y := itemDrop.Position.Y - ms.cameraY
 		
+		// Get current size (considering shrink effect)
+		width, height := itemDrop.GetCurrentSize()
+		
+		// Center the item based on its current size
+		x += (entities.ItemDropSize - width) / 2
+		y += (entities.ItemDropSize - height) / 2
+		
 		// Only draw if on screen
-		if x >= -GridSize && x <= 800+GridSize && y >= -GridSize && y <= 600+GridSize {
+		if x >= -entities.ItemDropSize && x <= 800+entities.ItemDropSize && y >= -entities.ItemDropSize && y <= 600+entities.ItemDropSize {
 			if ms.blockSprites != nil {
 				// Use sprite for item drop based on item type
 				var blockSprite *ebiten.Image
@@ -758,25 +758,46 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 				}
 				
 				if blockSprite != nil {
+					// Create a scaled version of the sprite
 					opts := &ebiten.DrawImageOptions{}
+					
+					// Calculate scale factors
+					scaleX := width / 32.0
+					scaleY := height / 32.0
+					
+					// Apply scaling
+					opts.GeoM.Scale(scaleX, scaleY)
 					opts.GeoM.Translate(x, y)
 					screen.DrawImage(blockSprite, opts)
 				} else {
 					// Fallback to colored rectangle
-					ebitenutil.DrawRect(screen, x, y, GridSize, GridSize, itemDrop.GetItem().Color)
+					ebitenutil.DrawRect(screen, x, y, width, height, itemDrop.GetItem().Color)
 				}
 			} else {
 				// Fallback to colored rectangle
-				ebitenutil.DrawRect(screen, x, y, GridSize, GridSize, itemDrop.GetItem().Color)
+				ebitenutil.DrawRect(screen, x, y, width, height, itemDrop.GetItem().Color)
+			}
+			
+			// Only draw border if item is not too small
+			if width > 4 && height > 4 {
+				// Draw a subtle border
+				ebitenutil.DrawRect(screen, x, y, width, 1, color.RGBA{0, 0, 0, 255}) // Top
+				ebitenutil.DrawRect(screen, x, y, 1, height, color.RGBA{0, 0, 0, 255}) // Left
+				ebitenutil.DrawRect(screen, x+width-1, y, 1, height, color.RGBA{0, 0, 0, 255}) // Right
+				ebitenutil.DrawRect(screen, x, y+height-1, width, 1, color.RGBA{0, 0, 0, 255}) // Bottom
 			}
 		}
 	}
 	
-	// Draw inventory system
+	// 绘制物品栏
 	ms.inventorySystem.Draw(screen, ms.inventory)
 	
-	// Draw health bar
+	// Draw player health bar
 	ms.drawHealthBar(screen)
+	
+	// Draw FPS counter
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("FPS: %.2f", ms.fps), 10, 10)
+	
 }
 
 // drawCoordinateSystem 绘制坐标系网格
@@ -912,13 +933,16 @@ func (ms *MainScene) drawBoxWithBorder(screen *ebiten.Image, x, y, width, height
 
 // updateDraggedBlock 更新鼠标跟随方块的位置和显示状态
 func (ms *MainScene) updateDraggedBlock(mouseX, mouseY float64) {
-	// 更新鼠标跟随方块状态
+	// 获取当前选中的物品
 	selectedItem := ms.inventory.GetSelectedItem()
-	if selectedItem != nil && selectedItem.Item != nil {
-		// 设置鼠标跟随方块的类型和颜色
-		ms.draggedBlockType = selectedItem.Item.ID
-		ms.draggedBlockColor = selectedItem.Item.Color
+	
+	// 如果有选中物品，显示鼠标跟随方块
+	if selectedItem != nil && selectedItem.Count > 0 {
 		ms.showDraggedBlock = true
+		ms.draggedBlockColor = selectedItem.Item.Color
+		
+		// 根据物品ID设置方块类型
+		ms.draggedBlockType = selectedItem.Item.ID
 	} else {
 		ms.showDraggedBlock = false
 	}
@@ -957,6 +981,82 @@ func (ms *MainScene) pickBlockAt(x, y float64) {
 				}
 			}
 			return
+		}
+	}
+}
+
+// breakBlock breaks a block at the given position and creates an item drop
+func (ms *MainScene) breakBlock(x, y float64, blockType string) {
+	// Remove the block from the blocks slice
+	for i, block := range ms.blocks {
+		if block.Position.X == x && block.Position.Y == y {
+			// Remove the block
+			ms.blocks = append(ms.blocks[:i], ms.blocks[i+1:]...)
+			
+			// Create an item based on the block type
+			var item components.Item
+			switch blockType {
+			case "RedBlock":
+				item = components.Item{
+					ID:       "red_block",
+					Name:     "Red Block",
+					Count:    1,
+					MaxStack: 64,
+					Color:    color.RGBA{255, 0, 0, 255},
+				}
+			case "BlueBlock":
+				item = components.Item{
+					ID:       "blue_block",
+					Name:     "Blue Block",
+					Count:    1,
+					MaxStack: 64,
+					Color:    color.RGBA{0, 0, 255, 255},
+				}
+			case "GreenBlock":
+				item = components.Item{
+					ID:       "green_block",
+					Name:     "Green Block",
+					Count:    1,
+					MaxStack: 64,
+					Color:    color.RGBA{0, 255, 0, 255},
+				}
+			case "dirt":
+				item = components.Item{
+					ID:       "dirt",
+					Name:     "Dirt Block",
+					Count:    1,
+					MaxStack: 64,
+					Color:    color.RGBA{139, 69, 19, 255},
+				}
+			case "wood":
+				item = components.Item{
+					ID:       "wood",
+					Name:     "Wood Block",
+					Count:    1,
+					MaxStack: 64,
+					Color:    color.RGBA{160, 120, 40, 255},
+				}
+			default:
+				item = components.Item{
+					ID:       "small_block",
+					Name:     "Small Block",
+					Count:    1,
+					MaxStack: 64,
+					Color:    color.RGBA{128, 128, 128, 255},
+				}
+			}
+			
+			// Create an item drop at the block's position with random initial velocity
+			itemDrop := entities.NewItemDrop(x, y, &item)
+			
+			// Add some random initial velocity
+			itemDrop.Velocity.X = (0.5 - rand.Float64()) * 100 // Random X velocity
+			itemDrop.Velocity.Y = -100 - rand.Float64()*50     // Upward velocity with some randomness
+			
+			// Add the item drop to the scene
+			ms.itemDrops = append(ms.itemDrops, itemDrop)
+			
+			break
 		}
 	}
 }

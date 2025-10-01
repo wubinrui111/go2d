@@ -1,12 +1,23 @@
 // internal/components/box.go
 package components
 
-// Box represents a rectangular box for collision detection
+import (
+	"math"
+)
+
+// Box represents a rectangular collision box
 type Box struct {
-	X      float64 // X position
-	Y      float64 // Y position
-	Width  float64 // Width of the box
-	Height float64 // Height of the box
+	X, Y, Width, Height float64
+}
+
+// BoxHolder interface for anything that has a Box
+type BoxHolder interface {
+	GetBox() *Box
+}
+
+// GetBox returns the box itself
+func (b *Box) GetBox() *Box {
+	return b
 }
 
 // Intersects checks if this box intersects with another box
@@ -17,37 +28,27 @@ func (b *Box) Intersects(other *Box) bool {
 		b.Y+b.Height > other.Y
 }
 
-// GetIntersectionDepth calculates how much this box penetrates into another box
-// Returns the penetration depth on X and Y axes
-// Positive values indicate penetration in the positive direction, negative in the negative direction
+// GetIntersectionDepth calculates the depth of intersection between two boxes
+// Returns the x and y depths needed to separate the boxes
 func (b *Box) GetIntersectionDepth(other *Box) (float64, float64) {
-	// Calculate overlap on each axis
-	xOverlap := 0.0
-	yOverlap := 0.0
+	// Calculate centers
+	centerX1 := b.X + b.Width/2
+	centerY1 := b.Y + b.Height/2
+	centerX2 := other.X + other.Width/2
+	centerY2 := other.Y + other.Height/2
 	
-	if b.X < other.X+other.Width && b.X+b.Width > other.X {
-		// Calculate the minimum translation distance on X axis
-		leftOverlap := (b.X + b.Width) - other.X
-		rightOverlap := (other.X + other.Width) - b.X
-		
-		if leftOverlap < rightOverlap {
-			xOverlap = -leftOverlap // Negative means move left
-		} else {
-			xOverlap = rightOverlap // Positive means move right
-		}
+	// Calculate minimum translation distances
+	minTransX := (b.Width + other.Width) / 2 - math.Abs(centerX1-centerX2)
+	minTransY := (b.Height + other.Height) / 2 - math.Abs(centerY1-centerY2)
+	
+	// Determine direction to push
+	if centerX1 < centerX2 {
+		minTransX = -minTransX
 	}
 	
-	if b.Y < other.Y+other.Height && b.Y+b.Height > other.Y {
-		// Calculate the minimum translation distance on Y axis
-		topOverlap := (b.Y + b.Height) - other.Y
-		bottomOverlap := (other.Y + other.Height) - b.Y
-		
-		if topOverlap < bottomOverlap {
-			yOverlap = -topOverlap // Negative means move up
-		} else {
-			yOverlap = bottomOverlap // Positive means move down
-		}
+	if centerY1 < centerY2 {
+		minTransY = -minTransY
 	}
 	
-	return xOverlap, yOverlap
+	return minTransX, minTransY
 }

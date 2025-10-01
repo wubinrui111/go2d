@@ -49,6 +49,11 @@ func (bb *BaseBlock) IsMouseOver(mouseX, mouseY float64) bool {
 		bb.Box.Y <= mouseY && mouseY <= bb.Box.Y+bb.Box.Height
 }
 
+// GetBox implements the BoxHolder interface
+func (bb *BaseBlock) GetBox() *components.Box {
+	return &bb.Box
+}
+
 // GetColor returns the color of the block
 func (bb *BaseBlock) GetColor() color.RGBA {
 	return bb.Color

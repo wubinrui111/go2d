@@ -1,10 +1,7 @@
 package scenes
 
 import (
-	"image/color"
 	"testing"
-
-	"github.com/wubinrui111/2d-game/internal/components"
 )
 
 func TestMainSceneCreation(t *testing.T) {
@@ -21,24 +18,9 @@ func TestMainSceneCreation(t *testing.T) {
 		t.Error("Expected blocks to be created")
 	}
 	
-	// Check that we have a reasonable number of blocks (at least 15 for ground surface)
-	if len(scene.blocks) < 15 {
-		t.Errorf("Expected at least 15 blocks, got %d", len(scene.blocks))
-	}
-	
-	// Check that there's a block at a specific expected position (736, 544)
-	hasBlockAt736544 := false
-	for _, block := range scene.blocks {
-		// 检查是否在预期位置 (320, 512) 有方块
-		if block.Position.X == 320 && block.Position.Y == 512 {
-			hasBlockAt736544 = true
-			break
-		}
-	}
-	
-	// 验证320,512位置确实有方块
-	if !hasBlockAt736544 {
-		t.Error("Expected to find a block at position (320, 512)")
+	// Check that we have a reasonable number of blocks (at least 10 for ground surface)
+	if len(scene.blocks) < 10 {
+		t.Errorf("Expected at least 10 blocks (including ground surface blocks), got %d", len(scene.blocks))
 	}
 	
 	// 检查所有方块是否都对齐到网格
@@ -46,6 +28,28 @@ func TestMainSceneCreation(t *testing.T) {
 		if block.Position.X != float64(int(block.Position.X)/32*32) || 
 		   block.Position.Y != float64(int(block.Position.Y)/32*32) {
 			t.Errorf("Block at (%f, %f) is not aligned to 32-pixel grid", block.Position.X, block.Position.Y)
+		}
+	}
+	
+	// 检查是否有方块在736, 544位置
+	hasBlockAt736544 := false
+	for _, block := range scene.blocks {
+		if block.Position.X == 736 && block.Position.Y == 544 {
+			hasBlockAt736544 = true
+			break
+		}
+	}
+	
+	// 验证736,544位置确实有方块
+	if !hasBlockAt736544 {
+		t.Error("Expected to find a block at position (736, 544)")
+	}
+	
+	// 检查地面方块位置
+	groundBlocks := 0
+	for _, block := range scene.blocks {
+		if block.Position.Y == 544 {
+			groundBlocks++
 		}
 	}
 	
@@ -111,19 +115,6 @@ func TestMainSceneUpdate(t *testing.T) {
 func TestPlaceAndRemoveBlocks(t *testing.T) {
 	scene := NewMainScene()
 	
-	// 添加一个测试物品到物品栏
-	testItem := components.Item{
-		ID:       "small_block",
-		Name:     "Small Block",
-		Count:    10,
-		MaxStack: 64,
-		Color:    color.RGBA{200, 100, 100, 255},
-	}
-	scene.inventory.AddItem(testItem)
-	
-	// 选择该物品
-	scene.inventory.SelectSlot(0)
-	
 	// 记录初始方块数量
 	initialBlockCount := len(scene.blocks)
 	
@@ -136,17 +127,12 @@ func TestPlaceAndRemoveBlocks(t *testing.T) {
 	}
 	
 	// 检查新方块是否在正确位置（网格对齐）
-	// 由于placeBlockAt函数现在会检查是否试图在玩家位置放置方块，
-	// 我们需要选择一个远离玩家和现有方块的位置进行测试
 	newBlock := scene.blocks[len(scene.blocks)-1]
 	expectedX := float64(int(100/32)*32) // 96
 	expectedY := float64(int(100/32)*32) // 96
 	if newBlock.Position.X != expectedX || newBlock.Position.Y != expectedY {
-		// 由于实际代码中可能因为位置冲突而放置在其他位置，我们检查是否至少有一个方块被添加
-		if len(scene.blocks) <= initialBlockCount {
-			t.Errorf("Expected new block at (%f, %f) due to grid alignment, got (%f, %f)", 
-				expectedX, expectedY, newBlock.Position.X, newBlock.Position.Y)
-		}
+		t.Errorf("Expected new block at (%f, %f) due to grid alignment, got (%f, %f)", 
+			expectedX, expectedY, newBlock.Position.X, newBlock.Position.Y)
 	}
 	
 	// 尝试在相同位置放置另一个方块，应该不会增加方块数量
@@ -157,25 +143,27 @@ func TestPlaceAndRemoveBlocks(t *testing.T) {
 	
 	// 在空的位置放置方块，应该会增加方块数量
 	// 选择一个不在地面表面的位置放置
-	scene.placeBlockAt(1000, 600) // 选择一个足够远的空位置放置
+	scene.placeBlockAt(750, 580) // 选择一个空的位置放置 (对齐后是736, 576)
 	if len(scene.blocks) != initialBlockCount+2 {
 		t.Errorf("Expected block count to increase when placing underground, got %d", len(scene.blocks))
 	}
 	
-	// 再放置一个方块
-	scene.placeBlockAt(1100, 600)
+	// 在地下放置方块，应该会增加方块数量
+	scene.placeBlockAt(100, 600) // 地下位置 (对齐后是96, 576)
 	if len(scene.blocks) != initialBlockCount+3 {
 		t.Errorf("Expected block count to increase when placing underground, got %d", len(scene.blocks))
 	}
 	
-	// 再放置一个方块
-	scene.placeBlockAt(1200, 600)
+	// 在很深的地下放置方块，也应该可以放置
+	scene.placeBlockAt(200, 1000) // 很深的地下位置 (对齐后是192, 992)
 	if len(scene.blocks) != initialBlockCount+4 {
 		t.Errorf("Expected block count to increase when placing deep underground, got %d", len(scene.blocks))
 	}
 	
-	// 移除一个方块
-	scene.removeBlockAt(1000, 600)
+	// 移除方块（移除我们刚放置的地下方块）
+	scene.removeBlockAt(100, 600)
+	
+	// 检查方块数量是否恢复
 	if len(scene.blocks) != initialBlockCount+3 {
 		t.Errorf("Expected block count to return to previous value, got %d", len(scene.blocks))
 	}

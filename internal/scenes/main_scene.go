@@ -9,8 +9,11 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/yourusername/2d-game/internal/entities"
 	"github.com/yourusername/2d-game/internal/input"
+	"github.com/yourusername/2d-game/internal/components"
+	graphics "github.com/yourusername/2d-game/internal/systems"
 )
 
 const (
@@ -40,6 +43,15 @@ type MainScene struct {
 	// 添加物品系统相关字段
 	itemTypes []string     // 可用物品类型列表
 	currentItemIndex int   // 当前选中的物品索引
+	
+	// 添加物品栏系统相关字段
+	inventory       *components.Inventory
+	inventorySystem *graphics.InventorySystem
+	
+	// 添加鼠标跟随方块相关字段
+	draggedBlockType string // 被拖拽的方块类型
+	draggedBlockColor color.RGBA // 被拖拽方块的颜色
+	showDraggedBlock bool   // 是否显示被拖拽的方块
 }
 
 func NewMainScene() *MainScene {
@@ -88,11 +100,18 @@ func NewMainScene() *MainScene {
 		// 初始化物品系统
 		itemTypes: []string{"SmallBlock", "RedBlock", "BlueBlock", "GreenBlock"},
 		currentItemIndex: 0, // 默认选择第一个物品
+		
+		// 初始化物品栏系统
+		inventory:       components.NewInventory(27, 9), // 27个总槽位，9个快捷栏槽位
+		inventorySystem: graphics.NewInventorySystem(),
 	}
 	
 	// 初始化摄像机位置跟随玩家
 	scene.cameraX = scene.player.Position.X - 400  // 400是屏幕宽度的一半
 	scene.cameraY = scene.player.Position.Y - 300  // 300是屏幕高度的一半
+	
+	// 添加一些初始物品到物品栏
+	scene.initializeInventory()
 	
 	return scene
 }
@@ -128,6 +147,9 @@ func (ms *MainScene) Update() error {
 	
 	// 处理物品切换输入
 	ms.handleItemSwitching()
+	
+	// 更新物品栏系统
+	ms.inventorySystem.Update(ms.inventory)
 	
 	// Apply gravity to the player
 	ms.player.Velocity.Y += 500 * 1.0/60.0 // 500 pixels/sec^2 gravity
@@ -171,7 +193,7 @@ func (ms *MainScene) Update() error {
 
 // handleItemSwitching 处理物品切换输入
 func (ms *MainScene) handleItemSwitching() {
-	// 处理滚轮切换物品
+	// 处理滚轮切换物品（原始方向）
 	_, wheelY := ebiten.Wheel()
 	if wheelY > 0 {
 		// 向上滚动，切换到下一个物品
@@ -198,6 +220,9 @@ func (ms *MainScene) handleMouseInput() {
 	worldX := float64(mouseX) + ms.cameraX
 	worldY := float64(mouseY) + ms.cameraY
 	
+	// 更新鼠标跟随方块的位置
+	ms.updateDraggedBlock(worldX, worldY)
+	
 	// 处理左键点击（破坏方块）
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 		// 连续破坏方块
@@ -214,6 +239,11 @@ func (ms *MainScene) handleMouseInput() {
 		// 注意：我们不设置rightClickProcessed为true，这样可以实现连续放置
 	} else {
 		ms.rightClickProcessed = false
+	}
+	
+	// 处理中键点击（拾取方块）
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) {
+		ms.pickBlockAt(worldX, worldY)
 	}
 }
 
@@ -252,17 +282,49 @@ func (ms *MainScene) placeBlockAt(x, y float64) {
 		}
 	}
 	
+	// 检查是否试图在玩家位置放置方块
+	playerGridX := math.Floor(ms.player.Position.X/GridSize) * GridSize
+	playerGridY := math.Floor(ms.player.Position.Y/GridSize) * GridSize
+	if gridX == playerGridX && gridY == playerGridY {
+		// 不允许在玩家位置放置方块
+		return
+	}
+	
+	// 检查是否有选中的物品
+	selectedItem := ms.inventory.GetSelectedItem()
+	if selectedItem == nil || selectedItem.Count <= 0 {
+		// 没有选中物品或物品数量不足
+		return
+	}
+	
 	// 根据当前选中的物品类型创建相应的方块
 	var newBlock *entities.SmallBlock
-	switch ms.itemTypes[ms.currentItemIndex] {
-	case "RedBlock":
+	switch selectedItem.Item.ID {
+	case "red_block":
 		newBlock = entities.NewRedBlock(gridX, gridY)
-	case "BlueBlock":
+	case "blue_block":
 		newBlock = entities.NewBlueBlock(gridX, gridY)
-	case "GreenBlock":
+	case "green_block":
 		newBlock = entities.NewGreenBlock(gridX, gridY)
-	default: // "SmallBlock" 或其他情况
+	case "stone":
 		newBlock = entities.NewSmallBlock(gridX, gridY)
+		newBlock.SetColor(color.RGBA{128, 128, 128, 255})
+	case "dirt":
+		newBlock = entities.NewSmallBlock(gridX, gridY)
+		newBlock.SetColor(color.RGBA{100, 50, 0, 255})
+	case "wood":
+		newBlock = entities.NewSmallBlock(gridX, gridY)
+		newBlock.SetColor(color.RGBA{100, 70, 30, 255})
+	default: // "small_block" 或其他情况
+		newBlock = entities.NewSmallBlock(gridX, gridY)
+	}
+	
+	// 减少物品数量（创造模式下不减少物品数量）
+	if ms.inventorySystem.GameMode == 0 { // 生存模式才减少物品
+		if !ms.inventory.RemoveItem(selectedItem.Item.ID, 1) {
+			// 移除物品失败
+			return
+		}
 	}
 	
 	ms.blocks = append(ms.blocks, newBlock)
@@ -342,11 +404,19 @@ func (ms *MainScene) Draw(screen *ebiten.Image) {
 		}
 	}
 	
+	// 绘制鼠标跟随方块（如果启用）
+	if ms.showDraggedBlock {
+		ms.drawBoxWithBorder(screen, mouseGridX, mouseGridY, GridSize, GridSize, ms.draggedBlockColor, color.RGBA{255, 255, 255, 255})
+	}
+	
 	// 绘制鼠标所在的网格位置指示器（半透明红色方框）
 	ms.drawBoxWithBorder(screen, mouseGridX, mouseGridY, GridSize, GridSize, color.RGBA{0, 0, 0, 0}, color.RGBA{255, 0, 0, 100})
 	
 	// 绘制帧率和坐标信息
 	ms.drawDebugInfo(screen, mouseXFloat, mouseYFloat)
+	
+	// 绘制物品栏
+	ms.inventorySystem.Draw(screen, ms.inventory)
 }
 
 // drawCoordinateSystem 绘制坐标系网格
@@ -481,4 +551,121 @@ func (ms *MainScene) drawBoxWithBorder(screen *ebiten.Image, x, y, width, height
 	ebitenutil.DrawRect(screen, x, y, 1, height, borderColor)
 	// 右边框
 	ebitenutil.DrawRect(screen, x + width - 1, y, 1, height, borderColor)
+}
+
+// updateDraggedBlock 更新鼠标跟随方块的位置和显示状态
+func (ms *MainScene) updateDraggedBlock(mouseX, mouseY float64) {
+	// 获取当前选中的物品
+	selectedItem := ms.inventory.GetSelectedItem()
+	
+	// 如果有选中物品，显示鼠标跟随方块
+	if selectedItem != nil && selectedItem.Count > 0 {
+		ms.showDraggedBlock = true
+		ms.draggedBlockColor = selectedItem.Item.Color
+		
+		// 根据物品ID设置方块类型
+		ms.draggedBlockType = selectedItem.Item.ID
+	} else {
+		ms.showDraggedBlock = false
+	}
+}
+
+// pickBlockAt 在指定位置拾取方块
+func (ms *MainScene) pickBlockAt(x, y float64) {
+	// 计算方块应该所在的网格位置（强制对齐到GridSize像素网格）
+	gridX := math.Floor(x/GridSize) * GridSize
+	gridY := math.Floor(y/GridSize) * GridSize
+	
+	// 查找该位置的方块
+	for _, block := range ms.blocks {
+		if block.Position.X == gridX && block.Position.Y == gridY {
+			// 根据方块颜色确定方块类型
+			blockColor := block.GetColor()
+			
+			// 查找匹配的物品类型
+			var targetItemID string
+			switch blockColor {
+			case color.RGBA{200, 50, 50, 255}:
+				targetItemID = "red_block"
+			case color.RGBA{50, 50, 200, 255}:
+				targetItemID = "blue_block"
+			case color.RGBA{50, 200, 50, 255}:
+				targetItemID = "green_block"
+			default:
+				targetItemID = "small_block"
+			}
+			
+			// 查找匹配的物品槽位并选中它
+			for i, slot := range ms.inventory.Slots {
+				if slot.Item != nil && slot.Item.ID == targetItemID {
+					ms.inventory.SelectSlot(i)
+					return
+				}
+			}
+			return
+		}
+	}
+}
+
+// initializeInventory adds some initial items to the inventory
+func (ms *MainScene) initializeInventory() {
+	// 添加一些示例物品到物品栏
+	items := []components.Item{
+		{
+			ID:       "stone",
+			Name:     "Stone",
+			Count:    64,
+			MaxStack: 64,
+			Color:    color.RGBA{128, 128, 128, 255},
+		},
+		{
+			ID:       "dirt",
+			Name:     "Dirt",
+			Count:    32,
+			MaxStack: 64,
+			Color:    color.RGBA{100, 50, 0, 255},
+		},
+		{
+			ID:       "wood",
+			Name:     "Wood",
+			Count:    16,
+			MaxStack: 64,
+			Color:    color.RGBA{100, 70, 30, 255},
+		},
+		{
+			ID:       "small_block",
+			Name:     "Small Block",
+			Count:    10,
+			MaxStack: 64,
+			Color:    color.RGBA{200, 200, 50, 255},
+		},
+		{
+			ID:       "red_block",
+			Name:     "Red Block",
+			Count:    10,
+			MaxStack: 64,
+			Color:    color.RGBA{200, 50, 50, 255},
+		},
+		{
+			ID:       "blue_block",
+			Name:     "Blue Block",
+			Count:    10,
+			MaxStack: 64,
+			Color:    color.RGBA{50, 50, 200, 255},
+		},
+		{
+			ID:       "green_block",
+			Name:     "Green Block",
+			Count:    10,
+			MaxStack: 64,
+			Color:    color.RGBA{50, 200, 50, 255},
+		},
+	}
+	
+	// 添加物品到物品栏
+	for _, item := range items {
+		// 创建物品副本以避免引用问题
+		itemCopy := item
+		ms.inventory.AddItem(itemCopy)
+	}
 }
